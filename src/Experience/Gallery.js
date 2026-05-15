@@ -9,8 +9,7 @@ class Gallery {
 
     // Planes
     this.planes = []
-    this.texturesBySource = new Map()
-    this.useTextures = true
+    
     this.planeGap = 5
     this.desktopPlaneScale = 1
     this.mobilePlaneScale = 0.65
@@ -60,7 +59,6 @@ class Gallery {
     if (this.isInitialized) return
 
     this.setPlanes(scene)
-    this.updatePlaneMaterialMode()
     this.updatePlaneScale()
     this.layoutPlanes()
     this.bindPointerEvents()
@@ -69,67 +67,45 @@ class Gallery {
     this.isInitialized = true
   }
 
-  setPlanes(scene) {
-    const planeGeometry = new THREE.PlaneGeometry(3, 3)
+  getTextureSources() {
+  return []
+  }
 
-    this.planeConfig.forEach((plane, index) => {
-      const texture = this.texturesBySource.get(plane.textureSrc) || null
-      const textureImage = texture?.image
-      const aspectRatio =
-        textureImage && textureImage.width > 0 && textureImage.height > 0
-          ? textureImage.width / textureImage.height
-          : 1
-      const fallbackColor = plane.fallbackColor || '#ffffff'
-      const accentColor = plane.accentColor || fallbackColor
-      const backgroundColor = plane.backgroundColor || fallbackColor
-      const blob1Color = plane.blob1Color || fallbackColor
-      const blob2Color = plane.blob2Color || fallbackColor
-      const labelData = this.getPlaneLabelData(plane, this.planes.length)
-      const planeMaterial = new THREE.MeshBasicMaterial({
-        color: fallbackColor,
-        map: texture,
-        side: THREE.DoubleSide,
-        transparent: true,
-        depthWrite: false,
-        opacity: index === 0 ? 1 : 0,
-      })
-      const planeMesh = new THREE.Mesh(planeGeometry, planeMaterial)
-      planeMesh.userData.basePosition = plane.position
-      planeMesh.userData.baseColor = fallbackColor
-      planeMesh.userData.accentColor = accentColor
-      planeMesh.userData.backgroundColor = backgroundColor
-      planeMesh.userData.blob1Color = blob1Color
-      planeMesh.userData.blob2Color = blob2Color
-      planeMesh.userData.label = labelData
-      planeMesh.userData.texture = texture
-      planeMesh.userData.aspectRatio = aspectRatio
-      scene.add(planeMesh)
-      this.planes.push(planeMesh)
+  setPreloadedTextures(textures) {
+  // no-op — timeline mode uses no textures
+  }
+
+  setPlanes(scene) {
+  this.planeConfig.forEach((plane, index) => {
+    const geometry = new THREE.PlaneGeometry(2.2, 3.0) // fixed size, no aspect ratio needed
+
+    const material = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: index === 0 ? 0 : 0, // all invisible — text overlay IS the content
+      depthWrite: false,
+    })
+
+    const mesh = new THREE.Mesh(geometry, material)
+
+    mesh.userData.basePosition    = plane.position
+    mesh.userData.backgroundColor = plane.mood.background  // ← new field path
+    mesh.userData.blob1Color      = plane.mood.blob1       // ← new field path
+    mesh.userData.blob2Color      = plane.mood.blob2       // ← new field path
+    mesh.userData.label           = plane.timeline         // ← pass through whole timeline object
+
+    scene.add(mesh)
+    this.planes.push(mesh)
     })
   }
 
-  getPlaneLabelData(planeDefinition, index) {
-    const fallback = {
-      word: `tone ${String(index + 1).padStart(2, '0')}`,
-      pms: 'N/A',
-      color: '',
-    }
-    const label = planeDefinition.label || fallback
-
-    return {
-      word: label.word || fallback.word,
-      pms: label.pms || fallback.pms,
-      color: label.color || fallback.color,
-    }
-  }
+  
 
   updatePlaneScale() {
     const isMobileViewport = window.innerWidth <= this.mobileBreakpoint
     const scale = isMobileViewport ? this.mobilePlaneScale : this.desktopPlaneScale
 
     this.planes.forEach((plane) => {
-      const aspectRatio = plane.userData.aspectRatio || 1
-      plane.scale.set(scale * aspectRatio, scale, 1)
+      plane.scale.set(scale, scale, 1)
     })
   }
 
@@ -261,29 +237,10 @@ class Gallery {
     return moodBlendData?.currentMood || null
   }
 
-  getTextureSources() {
-    const textureSources = this.planeConfig
-      .map((planeDefinition) => planeDefinition.textureSrc)
-      .filter(Boolean)
 
-    return [...new Set(textureSources)]
-  }
+  
 
-  setPreloadedTextures(texturesBySource) {
-    this.texturesBySource = texturesBySource instanceof Map ? texturesBySource : new Map()
-  }
-
-  updatePlaneMaterialMode() {
-    this.planes.forEach((plane) => {
-      const planeMaterial = plane.material
-      const texture = plane.userData.texture || null
-      const hasTexture = Boolean(texture)
-
-      planeMaterial.map = this.useTextures && hasTexture ? texture : null
-      planeMaterial.color.set(this.useTextures && hasTexture ? '#ffffff' : plane.userData.baseColor)
-      planeMaterial.needsUpdate = true
-    })
-  }
+  
 
   bindDebug() {
     if (!this.debug || this.isDebugBound) return
@@ -300,16 +257,6 @@ class Gallery {
       },
       onChange: () => {
         this.layoutPlanes()
-      },
-    })
-
-    this.debug.addBinding({
-      folderTitle: 'Gallery',
-      targetObject: this,
-      property: 'useTextures',
-      label: 'Use Textures',
-      onChange: () => {
-        this.updatePlaneMaterialMode()
       },
     })
 
@@ -494,11 +441,10 @@ class Gallery {
       plane.rotation.y = tiltY
       plane.rotation.z = 0
 
-      const aspectRatio = plane.userData.aspectRatio || 1
       const baseScale =
         window.innerWidth <= this.mobileBreakpoint ? this.mobilePlaneScale : this.desktopPlaneScale
       const scalePulse = 1 + this.breathScaleAmount * breathInfluence
-      plane.scale.x = baseScale * aspectRatio * scalePulse
+      plane.scale.x = baseScale * scalePulse
       plane.scale.y = baseScale * scalePulse
       plane.scale.z = 1
     })
